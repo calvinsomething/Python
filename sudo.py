@@ -3,7 +3,7 @@ import keyboard as kb
 from random import shuffle
 
 window = Tk()
-window.title("Sudoku Player")
+window.title("Sudoku! (Hints: Blue = Naive, Red = Look Ahead)")
 
 active_square = None
 
@@ -133,13 +133,13 @@ class Square(Button):
 
 
 class Box(Frame):
-	def __init__(self, r, c):
-		super().__init__(window, bd=2, bg='green')
+	def __init__(self, r, c, **kw):
+		super().__init__(window, bd=2, bg='green', **kw)
 		self.grid(row=r, column=c)
 		self.squares = [Square(self, x // 3 * 3, x % 3 * 3) for x in range(9)]
 		
 
-boxes = [Box(x // 3, x % 3) for x in range(9)]
+boxes = [Box(x // 3 + 1, x % 3) for x in range(9)]
 
 
 rows = [(0, 1, 2), (3, 4, 5), (6, 7, 8)]
@@ -179,7 +179,6 @@ def scan(square, sector='all'):
 				if boxes[x].squares[y] != square: 
 					yield boxes[x].squares[y]
 
-
 def reset():
 	for box in boxes:
 		for square in box.squares:
@@ -189,8 +188,7 @@ def reset():
 		for square in box.squares:
 			for x in scan(square):
 				if x.val in square.possibilities:
-					square.possibilities.remove(x.val)						
-			
+					square.possibilities.remove(x.val)		
 
 def naive(square):
 	if len(square.possibilities) == 1:
@@ -210,7 +208,6 @@ def naive(square):
 
 	return False
 
-
 def get_blanks():
 	for box in boxes:
 		for square in box.squares:
@@ -229,27 +226,23 @@ def get_choices():
 	return choices
 
 def solve():
-
 	if not next(get_blanks()):
 		return True
-
 	reset()
-
 	for square in get_blanks():
 		if not square: break
 		value = naive(square)
 		if value:
-			set_value(square, value)
+			set_value(square, value, '#00aaff')
 			if solve(): return True
 			set_value(square, ' ')
-			print('---reverse---')
 			return False
-
-	if get_choices():
-		choice = get_choices()[0]
+	choices = get_choices()
+	if choices:
+		choice = choices[0]
 		if not choice.possibilities: return False
 		for x in [y for y in choice.possibilities]:
-			set_value(choice, str(x))
+			set_value(choice, str(x), '#d52a00')
 			if solve(): return True
 		set_value(choice, ' ')
 		return False
@@ -260,7 +253,6 @@ def make_copy():
 		for square in box.squares:
 			copy.add((square, square.val))
 	return copy
-
 
 def revert(copy, color=None):
 	for x in copy:
@@ -274,63 +266,102 @@ def revert(copy, color=None):
 		set_value(square, value, clr)
 
 def single():
-
 	reset()
-
 	for square in get_blanks():
 		if not square: break
 		value = naive(square)
 		if value:
 			return (square, value, '#00aaff')
-
 	copy = make_copy()
-	if get_choices():
-		choice = get_choices()[0]
+	choices = get_choices()
+	if choices:
+		choice = choices[0]
 		if not choice.possibilities: return
 		for x in [y for y in choice.possibilities]:
 			set_value(choice, str(x))
-			print('force: ' + str(x))
 			if solve(): break
 		revert(copy)
 		return (choice, str(x), '#d52a00')
 
-
-
 def hint():
-	
-	if single():
-		x, y, z = single()
+	hint = single()
+	if hint:
+		x, y, z = hint
 		set_value(x, y, z)
-
 
 def clear():
 	for x in range(9):
 		for y in range(9):
 			set_value(boxes[x].squares[y], ' ')
 
+def naive_loop():
+	for square in get_blanks():
+		if not square: break
+		value = naive(square)
+		if value:
+			set_value(square, value)
+			reset()
+			naive_loop()
 
-def remove_squares():
+def one_solution():
+	solutions = 0
+	reset()
+	copy = make_copy()
+	naive_loop()
+	if not next(get_blanks()):
+		revert(copy)
+		reset()
+		return True
+	
+	temp = make_copy()
+	choices = get_choices()
+	if choices:
+		for choice in choices:
+			for x in [y for y in choice.possibilities]:
+				set_value(choice, str(x))
+				if solve():
+					solutions += 1
+					revert(temp)
+				set_value(choice, ' ')
+				reset()
+				if solutions > 1:
+					revert(copy)
+					reset()
+					return False
+	revert(copy)
+	reset()
+	return bool(solutions)
 
+def remove_squares(mode):
 	all_squares = [square for box in boxes for square in box.squares]
 	shuffle(all_squares)
 
-	for x in range(20):
-		set_value(all_squares[x], ' ')
-
 	for square in all_squares:
-		if square.val:
-			temp = square.val
-			set_value(square, ' ')
-			reset()
-			value = naive(square)
-			if not value: set_value(square, str(temp))
+		temp = square.val
+		set_value(square, ' ')
+		reset()
+		if not naive(square): set_value(square, str(temp))
+		reset()
+			
+	if mode == 'medium' or mode == 'hard':
+		erasures = 0
+		for square in all_squares:
+			if mode == 'medium' and erasures > 5: break
+			if square.val:
+				temp = square.val
+				set_value(square, ' ')
+				print('removing number - ' + str(erasures))
+				erasures += 1
+				reset()
+				if not one_solution():
+					print('replacing number')
+					set_value(square, str(temp))
+					erasures -= 1
 
 	copy = make_copy()
 	revert(copy, '#007e02')
 
-
-def puzzle():
-
+def puzzle(mode='easy'):
 	clear()
 	order = list(range(1, 10))
 	shuffle(order)
@@ -340,18 +371,31 @@ def puzzle():
 	for square, x in zip(boxes[8].squares, order):
 		set_value(square, str(x))
 	solve()
+	remove_squares(mode)
 
-	remove_squares()
 
-	
+top_pannel = Frame(window, bg='green', padx=2, pady=1)
+top_pannel.grid(row=0, column=0, columnspan=3)
 
-hint_button = Button(window, text='Hint', font='14', bg='yellow', command=lambda: hint())
-hint_button.grid(row=3, column=0)
+hint_button = Button(top_pannel, text='Hint', font='14', bg='#d2f1d2', command=hint, width=8)
+hint_button.grid(row=0, column=2, padx=1)
 
-solve_button = Button(window, text='Solve', font='14', bg='#72d0ff', command=lambda: solve())
-solve_button.grid(row=3, column=1)
+solve_button = Button(top_pannel, text='Solve', font='14', bg='#bdefbd', command=solve, width=8)
+solve_button.grid(row=0, column=3, padx=1)
 
-clear_button = Button(window, text='New', font='14', bg='pink', command=puzzle)
-clear_button.grid(row=3, column=2)
+clear_button = Button(top_pannel, text='Clear', font='14', bg='#eafcea', command=clear, width=8)
+clear_button.grid(row=0, column=1, padx=1)
+
+new_button = Menubutton(top_pannel, text='New', font='14', bg='#f3fdf3', width=7, pady=8, relief=RAISED)
+new_button.grid(row=0, column=0, padx=1)
+
+new_button.menu = Menu(new_button, tearoff=0, font=('Helvetica', '12'), bd=2)
+new_button['menu'] = new_button.menu
+new_button.menu.add_command(label="Easy", command = puzzle)
+new_button.menu.add_command(label="Medium", command = lambda: puzzle('medium'))
+new_button.menu.add_command(label="Hard", command = lambda: puzzle('hard'))
+
 
 window.mainloop()
+
+# By: Calvin Storoschuk
