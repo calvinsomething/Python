@@ -336,17 +336,18 @@ def remove_squares(mode):
 	all_squares = [square for box in boxes for square in box.squares]
 	shuffle(all_squares)
 
-	for square in all_squares:
-		temp = square.val
-		set_value(square, ' ')
-		reset()
-		if not naive(square): set_value(square, str(temp))
-		reset()
+	if not mode == 'hard':
+		for square in all_squares:
+			temp = square.val
+			set_value(square, ' ')
+			reset()
+			if not naive(square): set_value(square, str(temp))
+			reset()
 			
 	if mode == 'medium' or mode == 'hard':
 		erasures = 0
 		for square in all_squares:
-			if mode == 'medium' and erasures > 5: break
+			if mode == 'medium' and erasures > 6: break
 			if square.val:
 				temp = square.val
 				set_value(square, ' ')
